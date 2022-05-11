@@ -1,0 +1,83 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
+
+<PageTitle>University Chat</PageTitle>
+<h5>Uni Chat</h5>
+
+@if (!isConnected)
+{
+    <div class="input-group">
+        <input @bind="username" placeholder="Enter your chat username">
+        <button class="btn btn-secondary form-control-append" @onclick="Connect">
+            Click to Connect
+        </button>
+    </div>
+}
+else
+{
+    <textarea style="width: 100%; height: 500px;" 
+              readonly="true">
+              @messages
+    </textarea>
+    <div>
+        <input @bind-value="message"
+               @bind-value:event="oninput"
+               @onkeyup="HandleInput"
+               class="form-control">
+        <button class="btn btn-primary form-group-append"
+                @onclick="Send"
+                disabled="@(!isConnected)">Send</button>
+    </div>
+}
+
+@code {
+    private HubConnection? hubConnection;
+    private string messages = string.Empty;
+    private string username = string.Empty;
+    private string message = string.Empty;
+
+    private async Task Connect()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri($"/chathub?username={username}"))
+            .Build();
+
+        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+        {
+            var msg = $"{(string.IsNullOrEmpty(user) ? "" : user + ": ")} {message}";
+            messages += msg + "\n";
+            StateHasChanged();
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task Send()
+    {
+        if(hubConnection != null)
+        {
+            await hubConnection.SendAsync("AddMessageToChat", username, message);
+            message = string.Empty;
+        }
+    }
+
+    public bool isConnected => hubConnection?.State == HubConnectionState.Connected;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private async Task HandleInput(KeyboardEventArgs args)
+    {
+        if (args.Key.Equals("Enter"))
+        {
+            await Send();
+        }
+    }
+}
